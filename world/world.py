@@ -8,6 +8,7 @@ Holds:
     interactables  — anything the player can press E on
     light_sources  — stationary LightSource instances
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -23,17 +24,18 @@ if TYPE_CHECKING:
 
 @dataclass
 class Tile:
-    rect:   pygame.Rect
-    kind:   str   # "ground", "grass", "dirt", …
-    color:  tuple[int, int, int]
+    rect: pygame.Rect
+    kind: str  # "ground", "grass", "dirt", …
+    color: tuple[int, int, int]
 
 
 @dataclass
 class Container:
     """Lootable crate / chest on the day map."""
-    pos:    pygame.Vector2
-    rect:   pygame.Rect
-    loot:   dict[str, int]   # resource → quantity
+
+    pos: pygame.Vector2
+    rect: pygame.Rect
+    loot: dict[str, int]  # resource → quantity
     opened: bool = False
 
     def interact(self, player) -> None:
@@ -52,15 +54,15 @@ class Container:
 
 @dataclass
 class Obstacle:
-    rect:  pygame.Rect
-    kind:  str = "wall"   # "wall", "rock", "barricade", …
-    hp:    int = -1       # -1 = indestructible
+    rect: pygame.Rect
+    kind: str = "wall"  # "wall", "rock", "barricade", …
+    hp: int = -1  # -1 = indestructible
 
     def draw(self, screen: pygame.Surface) -> None:
         colors = {
-            "wall":      (80,  80,  90),
-            "rock":      (100, 95,  85),
-            "barricade": (120, 90,  50),
+            "wall": (80, 80, 90),
+            "rock": (100, 95, 85),
+            "barricade": (120, 90, 50),
         }
         color = colors.get(self.kind, (90, 90, 90))
         pygame.draw.rect(screen, color, self.rect, border_radius=2)
@@ -69,15 +71,25 @@ class Obstacle:
 
 class World:
     def __init__(self) -> None:
-        self.tiles:         list[Tile]          = []
-        self.obstacles:     list[Obstacle]      = []
-        self.containers:    list[Container]     = []
-        self.light_sources: list[LightSource]   = []
+        self.tiles: list[Tile] = []
+        self.obstacles: list[Obstacle] = []
+        self.containers: list[Container] = []
+        self.light_sources: list[LightSource] = []
 
     @property
     def interactables(self):
         """Everything the player can interact with (E key)."""
-        return self.containers  # extend later: switches, buildable spots, …
+        return self.containers
+
+    @property
+    def campfire(self):
+        """Returns the first active campfire on the map, or None."""
+        from entities.light_source import LightSourceKind
+
+        return next(
+            (ls for ls in self.light_sources if ls.kind == LightSourceKind.CAMPFIRE),
+            None,
+        )
 
     # ------------------------------------------------------------------
     # Geometry helpers queried by LightSystem and CollisionSystem
