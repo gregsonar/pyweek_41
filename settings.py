@@ -13,7 +13,7 @@ class DisplayConfig:
     width: int = 1280
     height: int = 720
     fps: int = 60
-    title: str = "Into the Dark"
+    title: str = "Working Title: Into the Dark"
     vsync: bool = True
 
     @property
