@@ -7,6 +7,7 @@ State machine:
 During DAY:   player explores, loots containers, builds structures.
 During NIGHT: campfire burns, monsters spawn, survival loop runs.
 """
+
 from __future__ import annotations
 
 import logging
@@ -14,26 +15,26 @@ from enum import Enum, auto
 
 import pygame
 
-from core.event_bus   import Events
+from core.event_bus import Events
+from entities.player import Player
 from scenes.base_scene import BaseScene
-from settings          import DISPLAY, LIGHT, PHASE
-from systems.light_system import LightSystem
-from systems.ai_system    import AISystem
-from systems.collision    import CollisionSystem
+from settings import DISPLAY, LIGHT, PHASE
+from systems.ai_system import AISystem
+from systems.collision import CollisionSystem
 from systems.craft_system import CraftSystem
-from world.world          import World
-from world.generator      import generate_day_map, generate_night_map
-from entities.player      import Player
-from ui.hud               import HUD
+from systems.light_system import LightSystem
+from ui.hud import HUD
+from world.generator import generate_day_map, generate_night_map
+from world.world import World
 
 log = logging.getLogger(__name__)
 
 
 class Phase(Enum):
-    DAY                = auto()
+    DAY = auto()
     TRANSITION_TO_NIGHT = auto()
-    NIGHT              = auto()
-    TRANSITION_TO_DAY  = auto()
+    NIGHT = auto()
+    TRANSITION_TO_DAY = auto()
 
 
 class GameScene(BaseScene):
@@ -50,21 +51,18 @@ class GameScene(BaseScene):
         self.night_number: int = 0
         self.phase: Phase = Phase.DAY
         self.phase_timer: float = 0.0
-        self.transition_alpha: int = 0        # 0..255 fade overlay
+        self.transition_alpha: int = 0
+        self._input_locked: bool = False
 
-        # Shared subsystems
-        self._light     = LightSystem(DISPLAY.size)
-        self._ai        = AISystem(self.game.bus)
+        self._light = LightSystem(DISPLAY.size)
+        self._ai = AISystem(self.game.bus)
         self._collision = CollisionSystem()
-        self._craft     = CraftSystem(self.game.bus)
-
-        # HUD
+        self._craft = CraftSystem(self.game.bus)
         self._hud = HUD(self.game.assets)
 
-        # Subscribe to game events
         bus = self.game.bus
-        bus.subscribe(Events.PLAYER_DIED,   self._on_player_died)
-        bus.subscribe(Events.ITEM_CRAFTED,  self._on_item_crafted)
+        bus.subscribe(Events.PLAYER_DIED, self._on_player_died)
+        bus.subscribe(Events.ITEM_CRAFTED, self._on_item_crafted)
 
         self._start_day()
 
@@ -72,6 +70,7 @@ class GameScene(BaseScene):
         self.night_number += 1
         self.phase = Phase.DAY
         self.phase_timer = PHASE.day_duration
+        self._input_locked = False
 
         self.world = generate_day_map(self.night_number)
         self.player = Player(
@@ -85,10 +84,17 @@ class GameScene(BaseScene):
         self.phase = Phase.NIGHT
         self.phase_timer = PHASE.night_duration
 
-        # Rebuild map around the campfire
         self.world = generate_night_map(self.night_number, self.player.inventory)
         self._collision.load_world(self.world)
         self._ai.begin_night(self.world, self.night_number)
+
+        # [Fix 8] Move player to a safe position beside the campfire
+        safe_pos = pygame.Vector2(DISPLAY.width // 2, DISPLAY.height // 2 + 90)
+        self.player.pos.update(safe_pos)
+        self.player.rect.center = (int(safe_pos.x), int(safe_pos.y))
+        self.player.input_locked = False
+        self._input_locked = False
+
         self.game.bus.publish(Events.PHASE_NIGHT_START)
         log.debug("Night %d started", self.night_number)
 
@@ -96,6 +102,8 @@ class GameScene(BaseScene):
     # Frame loop
     # ------------------------------------------------------------------
     def handle_event(self, event: pygame.Event) -> None:
+        if self._input_locked:
+            return
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
                 self.manager.switch("menu")
@@ -129,7 +137,11 @@ class GameScene(BaseScene):
             monster.draw(screen)
 
         # 3. Light/shadow overlay (drawn on top of everything)
-        if self.phase in (Phase.NIGHT, Phase.TRANSITION_TO_NIGHT, Phase.TRANSITION_TO_DAY):
+        if self.phase in (
+            Phase.NIGHT,
+            Phase.TRANSITION_TO_NIGHT,
+            Phase.TRANSITION_TO_DAY,
+        ):
             light_sources = self._collect_light_sources()
             self._light.draw(screen, self.world.obstacle_segments(), light_sources)
 
@@ -157,24 +169,29 @@ class GameScene(BaseScene):
         if self.phase_timer <= 0:
             self.phase = Phase.TRANSITION_TO_NIGHT
             self.phase_timer = PHASE.transition_duration
+            self._input_locked = True
+            self.player.input_locked = True
             self.game.bus.publish(Events.PHASE_TRANSITION, to_phase="night")
 
     def _update_night(self, dt: float) -> None:
+        self.world.update(dt)  # [Fix 6] drain campfire fuel, etc.
         self.player.update(dt, self.world, self._collision, is_night=True)
-        self._ai.update(dt, self.player, self.world, self._light)
+
+        lantern_sources = self._collect_lantern_sources()
+        self._ai.update(dt, self.player, self.world, self._light, lantern_sources)
 
         if self.phase_timer <= 0:
             self.phase = Phase.TRANSITION_TO_DAY
             self.phase_timer = PHASE.transition_duration
+            self._input_locked = True
+            self.player.input_locked = True
             self.game.bus.publish(Events.PHASE_TRANSITION, to_phase="day")
 
     def _update_transition(self, dt: float, *, going_to_night: bool) -> None:
         progress = 1.0 - (self.phase_timer / PHASE.transition_duration)
-        if going_to_night:
-            self.transition_alpha = int(255 * progress)
-        else:
-            self.transition_alpha = int(255 * (1.0 - progress))
-
+        self.transition_alpha = (
+            int(255 * progress) if going_to_night else int(255 * (1.0 - progress))
+        )
         if self.phase_timer <= 0:
             self.transition_alpha = 0
             if going_to_night:
@@ -186,22 +203,20 @@ class GameScene(BaseScene):
     # Helpers
     # ------------------------------------------------------------------
     def _collect_light_sources(self) -> list[tuple[pygame.Vector2, float, float]]:
-        """
-        Returns list of (world_pos, radius, intensity 0..1).
-        Intensity feeds both the visual brightness and the threat multiplier.
-        """
+        """All light sources for the shadow renderer: (pos, radius, intensity)."""
         sources: list[tuple[pygame.Vector2, float, float]] = []
-
-        # Player lantern
         if self.player.lantern_on and self.player.lantern_fuel > 0:
             sources.append((self.player.pos, self.player.lantern_radius, 1.0))
-
-        # Static light sources from world (campfire, torches, …)
         for light in self.world.light_sources:
             if light.active:
                 sources.append((light.pos, light.radius, light.intensity))
-
         return sources
+
+    def _collect_lantern_sources(self) -> list[tuple[pygame.Vector2, float]]:
+        """Only the player's lantern — used for monster HP damage (not campfire)."""
+        if self.player.lantern_on and self.player.lantern_fuel > 0:
+            return [(self.player.pos, self.player.lantern_radius)]
+        return []
 
     def _on_player_died(self) -> None:
         scene = self.manager._scenes.get("gameover")
@@ -214,6 +229,6 @@ class GameScene(BaseScene):
 
     def _cleanup(self) -> None:
         bus = self.game.bus
-        bus.unsubscribe(Events.PLAYER_DIED,  self._on_player_died)
+        bus.unsubscribe(Events.PLAYER_DIED, self._on_player_died)
         bus.unsubscribe(Events.ITEM_CRAFTED, self._on_item_crafted)
         bus.clear(Events.WAVE_SPAWNED)
