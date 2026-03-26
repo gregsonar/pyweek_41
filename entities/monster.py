@@ -19,10 +19,10 @@ class MonsterType(Enum):
 
 
 # Per-type tuning table (speed, aggro_radius, hp, color)
-_TYPE_STATS: dict[MonsterType, tuple[float, float, int, tuple[int, int, int]]] = {
-    MonsterType.BASIC: (90.0, 200.0, 2, (160, 40, 40)),
-    MonsterType.STALKER: (160.0, 260.0, 1, (80, 20, 140)),
-    MonsterType.SMASHER: (60.0, 100.0, 5, (120, 80, 20)),
+_TYPE_STATS: dict[MonsterType, tuple[float, float, float, tuple[int, int, int]]] = {
+    MonsterType.BASIC: (90.0, 200.0, 2.0, (160, 40, 40)),
+    MonsterType.STALKER: (160.0, 260.0, 1.0, (80, 20, 140)),
+    MonsterType.SMASHER: (60.0, 100.0, 5.0, (120, 80, 20)),
 }
 
 
@@ -33,7 +33,7 @@ class Monster:
         kind: MonsterType,
         speed: float,
         aggro_radius: float,
-        hp: int,
+        hp: float,
         color: tuple[int, int, int],
     ) -> None:
         self.pos: pygame.Vector2 = pygame.Vector2(pos)
@@ -63,7 +63,7 @@ class Monster:
             kind=kind,
             speed=speed * difficulty,
             aggro_radius=aggro,
-            hp=hp,
+            hp=hp * 10,
             color=color,
         )
 
