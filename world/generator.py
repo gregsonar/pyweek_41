@@ -8,6 +8,7 @@ generate_night_map(night_number, inventory) → World
     Places the campfire at the centre; adds obstacles the player
     built during the day (derived from inventory).
 """
+
 from __future__ import annotations
 
 import random
@@ -29,23 +30,25 @@ if TYPE_CHECKING:
 
 _TILE_COLORS: dict[str, tuple[int, int, int]] = {
     "ground": (28, 32, 28),
-    "grass":  (32, 42, 30),
-    "dirt":   (40, 35, 28),
+    "grass": (32, 42, 30),
+    "dirt": (40, 35, 28),
 }
 
 _LOOT_TABLE: list[tuple[str, int, float]] = [
     # (resource, max_qty, weight)
-    (RESOURCES.FUEL,    3, 0.30),
+    (RESOURCES.FUEL, 3, 0.30),
     (RESOURCES.BATTERY, 2, 0.20),
-    (RESOURCES.WOOD,    4, 0.30),
-    (RESOURCES.METAL,   2, 0.10),
-    (RESOURCES.CLOTH,   3, 0.10),
+    (RESOURCES.WOOD, 4, 0.30),
+    (RESOURCES.METAL, 2, 0.10),
+    (RESOURCES.CLOTH, 3, 0.10),
 ]
 
 
 def _random_loot(min_types: int = 1, max_types: int = 3) -> dict[str, int]:
     resources, weights = zip(*[(r, w) for r, _, w in _LOOT_TABLE])
-    chosen = random.choices(resources, weights=weights, k=random.randint(min_types, max_types))
+    chosen = random.choices(
+        resources, weights=weights, k=random.randint(min_types, max_types)
+    )
     loot: dict[str, int] = {}
     for r in chosen:
         max_q = next(m for name, m, _ in _LOOT_TABLE if name == r)
@@ -59,36 +62,46 @@ def _fill_tiles(world: World, tile_type: str = "ground") -> None:
     w, h = DISPLAY.width, DISPLAY.height
     for tx in range(0, w, ts):
         for ty in range(0, h, ts):
-            world.tiles.append(Tile(
-                rect=pygame.Rect(tx, ty, ts, ts),
-                kind=tile_type,
-                color=color,
-            ))
+            world.tiles.append(
+                Tile(
+                    rect=pygame.Rect(tx, ty, ts, ts),
+                    kind=tile_type,
+                    color=color,
+                )
+            )
+
+
+def _snap(value: int, unit: int) -> int:
+    """Round value down to nearest multiple of unit."""
+    return (value // unit) * unit
 
 
 def _scatter_obstacles(
     world: World,
     density: float,
-    screen_margin: int = 80,
+    screen_margin: int = 96,
 ) -> None:
-    ts = WORLD.tile_size
+    gu = WORLD.grid_unit  # 32px — minimum tile unit
     w, h = DISPLAY.width, DISPLAY.height
 
-    for tx in range(screen_margin, w - screen_margin, ts):
-        for ty in range(screen_margin, h - screen_margin, ts):
+    # Iterate in grid_unit steps so every candidate position is already grid-aligned
+    for tx in range(screen_margin, w - screen_margin, gu):
+        for ty in range(screen_margin, h - screen_margin, gu):
             if random.random() < density:
-                rect = pygame.Rect(
-                    tx + random.randint(0, ts // 3),
-                    ty + random.randint(0, ts // 3),
-                    random.randint(ts // 2, ts),
-                    random.randint(ts // 2, ts),
-                )
+                # Size is 1–3 grid units wide/tall
+                sw = random.randint(1, 3) * gu
+                sh = random.randint(1, 3) * gu
+                # Position snapped to grid
+                x = _snap(tx, gu)
+                y = _snap(ty, gu)
+                rect = pygame.Rect(x, y, sw, sh)
                 world.obstacles.append(Obstacle(rect=rect, kind="rock"))
 
 
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def generate_day_map(night_number: int) -> World:
     """
@@ -110,27 +123,28 @@ def generate_day_map(night_number: int) -> World:
     ts = WORLD.tile_size
     w, h = DISPLAY.width, DISPLAY.height
     loot_density = max(WORLD.container_density * (1 - (night_number - 1) * 0.03), 0.02)
-    margin = 100
+    margin = 96
+    gu = WORLD.grid_unit
 
-    for tx in range(margin, w - margin, ts):
-        for ty in range(margin, h - margin, ts):
+    for tx in range(margin, w - margin, gu * 2):  # step by 2 units to avoid crowding
+        for ty in range(margin, h - margin, gu * 2):
             if random.random() < loot_density:
-                pos = pygame.Vector2(
-                    tx + ts // 2 + random.randint(-10, 10),
-                    ty + ts // 2 + random.randint(-10, 10),
-                )
-                rect = pygame.Rect(0, 0, 36, 36)
-                rect.center = (int(pos.x), int(pos.y))
+                # Snap to grid
+                sx = _snap(tx, gu)
+                sy = _snap(ty, gu)
+                pos = pygame.Vector2(sx + gu // 2, sy + gu // 2)
+                rect = pygame.Rect(sx, sy, gu, gu)
 
-                # Don't overlap obstacles
                 if any(rect.colliderect(o.rect) for o in world.obstacles):
                     continue
 
-                world.containers.append(Container(
-                    pos=pos,
-                    rect=rect,
-                    loot=_random_loot(),
-                ))
+                world.containers.append(
+                    Container(
+                        pos=pos,
+                        rect=rect,
+                        loot=_random_loot(),
+                    )
+                )
 
     return world
 
@@ -159,6 +173,7 @@ def generate_night_map(night_number: int, inventory: dict[str, int]) -> World:
     for i in range(rock_count):
         angle_deg = 360 * i / rock_count + random.uniform(-15, 15)
         import math
+
         angle_rad = math.radians(angle_deg)
         rx = cx + ring_radius * math.cos(angle_rad)
         ry = cy + ring_radius * math.sin(angle_rad)
