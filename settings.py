@@ -2,6 +2,7 @@
 Global configuration. All magic numbers live here.
 Import the singleton instances at the bottom, not the classes.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -27,6 +28,7 @@ class DisplayConfig:
 @dataclass(frozen=True)
 class PhaseConfig:
     """Day/night cycle timings in seconds."""
+
     day_duration: float = 30.0
     night_duration: float = 150.0
     transition_duration: float = 3.0  # fade between phases
@@ -40,12 +42,15 @@ class LightConfig:
     darkness_alpha_night: int = 215
 
     # Player lantern defaults
-    lantern_base_radius: float = 180.0
-    lantern_fuel_drain_per_sec: float = 8.0   # fuel units / sec
+    lantern_base_radius: float = 260.0
+    lantern_fuel_drain_per_sec: float = 8.0  # fuel units / sec
     lantern_max_fuel: float = 100.0
+    lantern_recharge_enabled: bool = True
+    lantern_recharge_rate: float = 5.0
 
     # Campfire
     campfire_radius: float = 220.0
+    campfire_max_hp: float = 100.0
 
     # How many extra rays per light (more = smoother shadows, slower)
     ray_epsilon: float = 0.0001
@@ -57,7 +62,7 @@ class LightConfig:
 
 @dataclass(frozen=True)
 class PlayerConfig:
-    speed: float = 180.0          # px / sec
+    speed: float = 180.0  # px / sec
     sprint_multiplier: float = 1.6
     hp: int = 3
     interact_radius: float = 60.0
@@ -74,8 +79,11 @@ class MonsterConfig:
     night_difficulty_scale: float = 1.15
     # Base monsters spawned per night
     base_spawn_count: int = 3
-    spawn_interval: float = 12.0   # seconds between spawn waves
-    spawn_margin: float = 60.0     # px outside screen edge
+    spawn_interval: float = 12.0  # seconds between spawn waves
+    spawn_margin: float = 60.0  # px outside screen edge
+    alert_timeout: float = 4.0
+    light_damage_per_sec: float = 12.0
+    campfire_damage_per_sec: float = 6.0
 
 
 @dataclass(frozen=True)
@@ -90,11 +98,13 @@ class WorldConfig:
     # Loot container spawn odds per tile
     container_density: float = 0.06
     obstacle_density: float = 0.10
+    grid_unit: int = 32
 
 
 @dataclass(frozen=True)
 class ResourceConfig:
     """Resource type names used as keys everywhere."""
+
     FUEL: str = "fuel"
     BATTERY: str = "battery"
     WOOD: str = "wood"
@@ -108,22 +118,25 @@ class CraftRecipes:
     recipes[result] = {ingredient: count, ...}
     Keep it data-driven so the designer can tweak without touching logic.
     """
-    recipes: dict[str, dict[str, int]] = field(default_factory=lambda: {
-        "torch":        {"wood": 2, "cloth": 1},
-        "campfire":     {"wood": 5},
-        "barricade":    {"wood": 3, "metal": 1},
-        "lantern_upgrade": {"metal": 3, "battery": 2},
-    })
+
+    recipes: dict[str, dict[str, int]] = field(
+        default_factory=lambda: {
+            "torch": {"wood": 2, "cloth": 1},
+            "campfire": {"wood": 5},
+            "barricade": {"wood": 3, "metal": 1},
+            "lantern_upgrade": {"metal": 3, "battery": 2},
+        }
+    )
 
 
 # ---------------------------------------------------------------------------
 # Singletons — import these in the rest of the codebase
 # ---------------------------------------------------------------------------
-DISPLAY   = DisplayConfig()
-PHASE     = PhaseConfig()
-LIGHT     = LightConfig()
-PLAYER    = PlayerConfig()
-MONSTER   = MonsterConfig()
-WORLD     = WorldConfig()
+DISPLAY = DisplayConfig()
+PHASE = PhaseConfig()
+LIGHT = LightConfig()
+PLAYER = PlayerConfig()
+MONSTER = MonsterConfig()
+WORLD = WorldConfig()
 RESOURCES = ResourceConfig()
-RECIPES   = CraftRecipes()
+RECIPES = CraftRecipes()
