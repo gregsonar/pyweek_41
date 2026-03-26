@@ -29,8 +29,8 @@ class DisplayConfig:
 class PhaseConfig:
     """Day/night cycle timings in seconds."""
 
-    day_duration: float = 30.0
-    night_duration: float = 150.0
+    day_duration: float = 20.0
+    night_duration: float = 60.0
     transition_duration: float = 3.0  # fade between phases
 
 
