@@ -259,12 +259,23 @@ class AISystem:
         )
 
     def _pick_type(self) -> MonsterType:
-        pool: list[MonsterType] = [MonsterType.BASIC] * 3
-        if self._night_number >= 3:
-            pool.append(MonsterType.STALKER)
-        if self._night_number >= 5:
-            pool.append(MonsterType.SMASHER)
-        return random.choice(pool)
+        # Вероятности для BASIC, STALKER, SMASHER в зависимости от ночи
+        prob_table = {
+            1: (0.90, 0.10, 0.00),
+            2: (0.85, 0.15, 0.00),
+            3: (0.75, 0.20, 0.05),
+            4: (0.70, 0.20, 0.10),
+            5: (0.60, 0.25, 0.15),
+            6: (0.55, 0.25, 0.20),
+            7: (0.50, 0.25, 0.25),
+        }
+        probs = prob_table.get(
+            min(self._night_number, max(prob_table.keys())), (0.50, 0.25, 0.25)
+        )
+
+        return random.choices(
+            [MonsterType.BASIC, MonsterType.STALKER, MonsterType.SMASHER], probs
+        )[0]
 
     @staticmethod
     def _random_offscreen_pos() -> pygame.Vector2:
