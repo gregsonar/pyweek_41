@@ -11,6 +11,7 @@ generate_night_map(night_number, inventory) → World
 
 from __future__ import annotations
 
+import math
 import random
 from typing import TYPE_CHECKING
 
@@ -80,22 +81,61 @@ def _scatter_obstacles(
     world: World,
     density: float,
     screen_margin: int = 96,
-) -> None:
-    gu = WORLD.grid_unit  # 32px — minimum tile unit
+) -> set[tuple[int, int]]:
+    """
+    Place obstacles aligned to grid_unit.
+    Returns the set of blocked grid cells so the container placer can use it.
+    The centre of the screen is kept clear in a radius of SAFE_RADIUS_CELLS grid cells.
+    """
+    gu = WORLD.grid_unit
     w, h = DISPLAY.width, DISPLAY.height
+    SAFE_RADIUS_CELLS = 3
 
-    # Iterate in grid_unit steps so every candidate position is already grid-aligned
+    centre_gx = (DISPLAY.width // 2) // gu
+    centre_gy = (DISPLAY.height // 2) // gu
+
+    def in_safe_zone(gx: int, gy: int) -> bool:
+        return (
+            abs(gx - centre_gx) <= SAFE_RADIUS_CELLS
+            and abs(gy - centre_gy) <= SAFE_RADIUS_CELLS
+        )
+
+    blocked: set[tuple[int, int]] = set()
+
     for tx in range(screen_margin, w - screen_margin, gu):
         for ty in range(screen_margin, h - screen_margin, gu):
-            if random.random() < density:
-                # Size is 1–3 grid units wide/tall
-                sw = random.randint(1, 3) * gu
-                sh = random.randint(1, 3) * gu
-                # Position snapped to grid
-                x = _snap(tx, gu)
-                y = _snap(ty, gu)
-                rect = pygame.Rect(x, y, sw, sh)
-                world.obstacles.append(Obstacle(rect=rect, kind="rock"))
+            if random.random() >= density:
+                continue
+
+            sw = random.randint(1, 3) * gu
+            sh = random.randint(1, 3) * gu
+            x = _snap(tx, gu)
+            y = _snap(ty, gu)
+
+            # Collect all cells this obstacle would cover
+            cells = [
+                (bx, by)
+                for bx in range(x // gu, (x + sw) // gu + 1)
+                for by in range(y // gu, (y + sh) // gu + 1)
+            ]
+
+            # Skip if ANY covered cell touches the safe zone
+            if any(in_safe_zone(gx, gy) for gx, gy in cells):
+                continue
+
+            rect = pygame.Rect(x, y, sw, sh)
+            world.obstacles.append(Obstacle(rect=rect, kind="rock"))
+            blocked.update(cells)
+
+    return blocked
+
+
+def _has_free_neighbour(gx: int, gy: int, blocked: set[tuple[int, int]]) -> bool:
+    """Return True if at least one cardinal neighbour is not blocked."""
+    for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+        if (gx + dx, gy + dy) not in blocked:
+            return True
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -117,27 +157,35 @@ def generate_day_map(night_number: int) -> World:
     _fill_tiles(world, "grass")
 
     density = min(WORLD.obstacle_density * (1 + (night_number - 1) * 0.05), 0.25)
-    _scatter_obstacles(world, density=density)
+    blocked = _scatter_obstacles(world, density=density)
 
-    # Loot containers
-    ts = WORLD.tile_size
-    w, h = DISPLAY.width, DISPLAY.height
+    # Loot containers — snapped to grid, skip if fully surrounded by obstacles
     loot_density = max(WORLD.container_density * (1 - (night_number - 1) * 0.03), 0.02)
     margin = 96
     gu = WORLD.grid_unit
+    w, h = DISPLAY.width, DISPLAY.height
 
-    for tx in range(margin, w - margin, gu * 2):  # step by 2 units to avoid crowding
+    for tx in range(margin, w - margin, gu * 2):
         for ty in range(margin, h - margin, gu * 2):
             if random.random() < loot_density:
-                # Snap to grid
                 sx = _snap(tx, gu)
                 sy = _snap(ty, gu)
-                pos = pygame.Vector2(sx + gu // 2, sy + gu // 2)
-                rect = pygame.Rect(sx, sy, gu, gu)
+                gx = sx // gu
+                gy = sy // gu
 
+                # Cell-based check (fast path)
+                if (gx, gy) in blocked:
+                    continue
+                # Rect-level check — catches multi-cell obstacles that overlap
+                # this cell but whose origin cell differs from (gx, gy)
+                rect = pygame.Rect(sx, sy, gu, gu)
                 if any(rect.colliderect(o.rect) for o in world.obstacles):
                     continue
+                # Reachability: at least one cardinal neighbour must be free
+                if not _has_free_neighbour(gx, gy, blocked):
+                    continue
 
+                pos = pygame.Vector2(sx + gu // 2, sy + gu // 2)
                 world.containers.append(
                     Container(
                         pos=pos,
@@ -172,8 +220,6 @@ def generate_night_map(night_number: int, inventory: dict[str, int]) -> World:
     rock_count = 6 + night_number // 2
     for i in range(rock_count):
         angle_deg = 360 * i / rock_count + random.uniform(-15, 15)
-        import math
-
         angle_rad = math.radians(angle_deg)
         rx = cx + ring_radius * math.cos(angle_rad)
         ry = cy + ring_radius * math.sin(angle_rad)
