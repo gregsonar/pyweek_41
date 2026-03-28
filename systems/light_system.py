@@ -19,6 +19,7 @@ Rendering (pygame)
 - Blit ``darkness`` using BLEND_RGBA_SUB to cut out the lit areas.
 - The result: world is dark, lit polygons glow through.
 """
+
 from __future__ import annotations
 
 import math
@@ -29,10 +30,10 @@ import pygame
 
 from settings import LIGHT
 
-
 # ---------------------------------------------------------------------------
 # Geometry primitives
 # ---------------------------------------------------------------------------
+
 
 @dataclass(slots=True)
 class Segment:
@@ -45,16 +46,18 @@ class Segment:
 def _rect_to_segments(r: pygame.Rect) -> list[Segment]:
     """Four edges of a rectangle, one Segment each."""
     return [
-        Segment(r.left,  r.top,    r.right, r.top),
-        Segment(r.right, r.top,    r.right, r.bottom),
-        Segment(r.right, r.bottom, r.left,  r.bottom),
-        Segment(r.left,  r.bottom, r.left,  r.top),
+        Segment(r.left, r.top, r.right, r.top),
+        Segment(r.right, r.top, r.right, r.bottom),
+        Segment(r.right, r.bottom, r.left, r.bottom),
+        Segment(r.left, r.bottom, r.left, r.top),
     ]
 
 
 def _ray_segment_intersect(
-    ox: float, oy: float,
-    dx: float, dy: float,
+    ox: float,
+    oy: float,
+    dx: float,
+    dy: float,
     seg: Segment,
 ) -> float | None:
     """
@@ -73,7 +76,7 @@ def _ray_segment_intersect(
         return None  # parallel / collinear
 
     t = ((seg.ax - ox) * sdy - (seg.ay - oy) * sdx) / denom
-    s = ((seg.ax - ox) * dy  - (seg.ay - oy) * dx)  / denom
+    s = ((seg.ax - ox) * dy - (seg.ay - oy) * dx) / denom
 
     if t >= 0.0 and 0.0 <= s <= 1.0:
         return t
@@ -83,6 +86,9 @@ def _ray_segment_intersect(
 # ---------------------------------------------------------------------------
 # Visibility polygon
 # ---------------------------------------------------------------------------
+
+_UNIFORM_RAY_COUNT = 72  # baseline rays every 5° — keeps arcs smooth between obstacles
+
 
 def compute_visibility_polygon(
     ox: float,
@@ -94,20 +100,20 @@ def compute_visibility_polygon(
     """
     Compute the illuminated polygon for a single light source.
 
-    Parameters
-    ----------
-    ox, oy:    Light source position (world space).
-    segments:  All obstacle segments to cast shadows from.
-    radius:    Maximum light radius in pixels.
-    epsilon:   Angular offset for corner-hugging rays.
+    Combines:
+      1. Uniform baseline rays (every 360/N degrees) — ensure smooth arcs in open areas.
+      2. Corner-hugging rays (angle ± ε) at every obstacle endpoint — crisp shadow edges.
 
-    Returns
-    -------
-    List of (x, y) world-space points forming the lit polygon.
-    Guaranteed to be sorted by angle (CCW) relative to (ox, oy).
+    Returns a list of (x, y) world-space points sorted by angle, ready for
+    pygame.draw.polygon.
     """
-    # Gather candidate angles: every segment endpoint ± ε
-    angles: list[float] = []
+    # 1. Uniform baseline — guarantees the polygon is never more angular than
+    #    a 72-gon even when there are no nearby obstacles.
+    angles: list[float] = [
+        math.tau * i / _UNIFORM_RAY_COUNT for i in range(_UNIFORM_RAY_COUNT)
+    ]
+
+    # 2. Obstacle endpoint rays
     for seg in segments:
         for ex, ey in ((seg.ax, seg.ay), (seg.bx, seg.by)):
             a = math.atan2(ey - oy, ex - ox)
@@ -115,16 +121,21 @@ def compute_visibility_polygon(
             angles.append(a)
             angles.append(a + epsilon)
 
-    if not angles:
-        # No obstacles — full circle (approximate with N rays)
-        angles = [math.tau * i / 64 for i in range(64)]
+    # Deduplicate angles that are closer than epsilon/2 to avoid near-duplicate
+    # vertices that can cause micro self-intersections in the polygon.
+    angles.sort()
+    deduped: list[float] = []
+    prev = -math.inf
+    for a in angles:
+        if a - prev > epsilon / 2:
+            deduped.append(a)
+            prev = a
 
     points: list[tuple[float, float]] = []
-    for angle in angles:
+    for angle in deduped:
         dx = math.cos(angle)
         dy = math.sin(angle)
 
-        # Find the closest intersection along this ray
         closest_t = radius
         for seg in segments:
             t = _ray_segment_intersect(ox, oy, dx, dy, seg)
@@ -133,7 +144,8 @@ def compute_visibility_polygon(
 
         points.append((ox + dx * closest_t, oy + dy * closest_t))
 
-    # Sort by angle so pygame can draw a proper polygon
+    # Already sorted (angles were sorted above), but re-sort by atan2 to be safe
+    # after the epsilon offsets may have pushed some angles across the ±π boundary.
     points.sort(key=lambda p: math.atan2(p[1] - oy, p[0] - ox))
     return points
 
@@ -143,9 +155,9 @@ def compute_visibility_polygon(
 # ---------------------------------------------------------------------------
 
 # (R,G,B) tint of each light; give each type a slightly different warmth
-_LANTERN_TINT  = (255, 210, 140)
-_CAMPFIRE_TINT = (255, 160,  80)
-_DEFAULT_TINT  = (255, 220, 180)
+_LANTERN_TINT = (255, 210, 140)
+_CAMPFIRE_TINT = (255, 160, 80)
+_DEFAULT_TINT = (255, 220, 180)
 
 # How many alpha units the darkness overlay uses per night
 _NIGHT_ALPHA = LIGHT.darkness_alpha_night
@@ -161,19 +173,18 @@ class LightSystem:
 
     def __init__(self, screen_size: tuple[int, int]) -> None:
         w, h = screen_size
-        # Persistent surface — recreated only if window resizes
         self._darkness = pygame.Surface((w, h), pygame.SRCALPHA)
+        # Single accumulated mask — all lit polygons drawn here first, then
+        # subtracted from darkness in ONE pass.  Avoids double-subtraction
+        # artifacts when two light polygons overlap.
+        self._light_mask = pygame.Surface((w, h), pygame.SRCALPHA)
         self._size = screen_size
-
-        # Reusable per-light surface
-        self._light_surf = pygame.Surface((w, h), pygame.SRCALPHA)
 
     # ------------------------------------------------------------------
     def draw(
         self,
         screen: pygame.Surface,
         segments: list[Segment],
-        # (world_pos, radius, intensity 0..1)
         light_sources: list[tuple[pygame.Vector2, float, float]],
         *,
         darkness_alpha: int = _NIGHT_ALPHA,
@@ -185,78 +196,71 @@ class LightSystem:
         Parameters
         ----------
         segments:
-            Obstacle geometry in *world* space.
+            Obstacle geometry in world space.
         light_sources:
-            Each entry: (position in world space, radius, intensity).
+            Each entry: (position in world space, radius, intensity 0..1).
         camera_offset:
-            If the world scrolls, pass the camera offset so world→screen
-            conversion is applied before rendering.
+            If the world scrolls, pass the camera offset for world→screen conversion.
         """
         offset = camera_offset or pygame.Vector2(0, 0)
 
-        # --- 1. Fill darkness ---
+        # --- 1. Darkness base ---
         self._darkness.fill((*LIGHT.darkness_color, darkness_alpha))
 
-        # --- 2. For each light, cut an illuminated polygon ---
-        for world_pos, radius, intensity in light_sources:
-            ox = world_pos.x
-            oy = world_pos.y
+        # --- 2. Accumulate ALL lit polygons into a single mask ---
+        #    Using BLEND_RGBA_MAX: overlapping light polygons take the brighter value,
+        #    no double-subtraction artifacts.
+        self._light_mask.fill((0, 0, 0, 0))
 
-            # Compute visibility polygon in world space
+        for world_pos, radius, intensity in light_sources:
+            ox, oy = world_pos.x, world_pos.y
+
             vis_world = compute_visibility_polygon(ox, oy, segments, radius)
             if len(vis_world) < 3:
                 continue
 
-            # Convert to screen space
-            vis_screen = [
-                (p[0] - offset.x, p[1] - offset.y)
-                for p in vis_world
-            ]
+            vis_screen = [(p[0] - offset.x, p[1] - offset.y) for p in vis_world]
 
-            # Draw the lit area on a transparent surface, then subtract from darkness
-            self._light_surf.fill((0, 0, 0, 0))
-            alpha = int(255 * max(0.0, min(1.0, intensity)))
-            pygame.draw.polygon(self._light_surf, (0, 0, 0, alpha), vis_screen)
+            alpha = int(min(darkness_alpha, 255) * max(0.0, min(1.0, intensity)))
+            pygame.draw.polygon(self._light_mask, (0, 0, 0, alpha), vis_screen)
 
-            # BLEND_RGBA_SUB: darkness_alpha -= light_alpha → punches a hole
-            self._darkness.blit(
-                self._light_surf, (0, 0),
-                special_flags=pygame.BLEND_RGBA_SUB,
+            # Soft glow drawn into the mask as well
+            self._draw_glow(
+                ox - offset.x, oy - offset.y, radius, intensity, darkness_alpha
             )
 
-            # Optional: soft glow halo at lower opacity
-            self._draw_glow(vis_screen, ox - offset.x, oy - offset.y, radius, intensity)
+        # --- 3. One subtract pass ---
+        self._darkness.blit(
+            self._light_mask, (0, 0), special_flags=pygame.BLEND_RGBA_SUB
+        )
 
-        # --- 3. Blit the final shadow overlay ---
+        # --- 4. Composite onto screen ---
         screen.blit(self._darkness, (0, 0))
 
     # ------------------------------------------------------------------
     def _draw_glow(
         self,
-        vis_screen: list[tuple[float, float]],
         sx: float,
         sy: float,
         radius: float,
         intensity: float,
+        darkness_alpha: int,
     ) -> None:
-        """
-        Paint a soft warm circle that bleeds slightly outside the hard polygon.
-        This fakes a glow without per-pixel shaders.
-        """
-        glow_alpha = int(60 * intensity)
-        glow_radius = int(radius * 0.3)
-        if glow_radius < 4 or glow_alpha < 5:
+        """Soft warm halo that bleeds slightly outside the hard shadow polygon."""
+        glow_alpha = int(40 * intensity)
+        glow_radius = int(radius * 0.25)
+        if glow_radius < 4 or glow_alpha < 4:
             return
 
-        glow_surf = pygame.Surface((glow_radius * 2, glow_radius * 2), pygame.SRCALPHA)
+        d = glow_radius * 2
+        glow_surf = pygame.Surface((d, d), pygame.SRCALPHA)
         pygame.draw.circle(
             glow_surf,
             (*_DEFAULT_TINT, glow_alpha),
             (glow_radius, glow_radius),
             glow_radius,
         )
-        self._darkness.blit(
+        self._light_mask.blit(
             glow_surf,
             (int(sx) - glow_radius, int(sy) - glow_radius),
-            special_flags=pygame.BLEND_RGBA_SUB,
         )
