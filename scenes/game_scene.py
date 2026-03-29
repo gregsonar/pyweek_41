@@ -18,7 +18,7 @@ import pygame
 from core.event_bus import Events
 from entities.player import Player
 from scenes.base_scene import BaseScene
-from settings import DISPLAY, LIGHT, PHASE
+from settings import AUDIO, DISPLAY, LIGHT, PHASE
 from systems.ai_system import AISystem
 from systems.collision import CollisionSystem
 from systems.craft_system import CraftSystem
@@ -88,6 +88,7 @@ class GameScene(BaseScene):
             bus=self.game.bus,
         )
         self._collision.load_world(self.world)
+        self.game.audio.play_music(AUDIO.music_day)
         log.debug("Day %d started", self.night_number)
 
     def _start_night(self) -> None:
@@ -117,12 +118,20 @@ class GameScene(BaseScene):
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
                 self.manager.switch("menu")
+            elif event.key == pygame.K_m:
+                self.game.audio.toggle_mute()
             else:
+                # Lantern toggle sfx
+                if event.key == pygame.K_f:
+                    self.game.audio.play_sfx(AUDIO.sfx_lantern_toggle)
                 self.player.handle_keydown(event.key)
         elif event.type == pygame.KEYUP:
             self.player.handle_keyup(event.key)
         elif event.type == pygame.MOUSEBUTTONDOWN:
-            self.player.handle_mouse(event.button, pygame.mouse.get_pos())
+            if self._hud.mute_button_rect.collidepoint(event.pos):
+                self.game.audio.toggle_mute()
+            else:
+                self.player.handle_mouse(event.button, event.pos)
 
     def update(self, dt: float) -> None:
         self.phase_timer -= dt
@@ -168,6 +177,7 @@ class GameScene(BaseScene):
             time_left=max(0.0, self.phase_timer),
             night=self.night_number,
             player=self.player,
+            muted=self.game.audio.muted,
         )
 
     # ------------------------------------------------------------------
@@ -181,6 +191,7 @@ class GameScene(BaseScene):
             self.phase_timer = PHASE.transition_duration
             self._input_locked = True
             self.player.input_locked = True
+            self.game.audio.play_random_sfx(AUDIO.sfx_night_transition)
             self.game.bus.publish(Events.PHASE_TRANSITION, to_phase="night")
 
     def _update_night(self, dt: float) -> None:

@@ -3,7 +3,10 @@ Heads-up display.
 
 Drawn last (on top of everything). Stateless — receives all values as
 arguments to ``draw()`` so it has zero coupling to game state.
+
+Exposes ``mute_button_rect`` so GameScene can hit-test mouse clicks.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -11,22 +14,26 @@ from typing import TYPE_CHECKING
 import pygame
 
 from core.asset_loader import AssetLoader
-from settings          import DISPLAY, LIGHT, PHASE
+from settings import DISPLAY, LIGHT, PHASE
 
 if TYPE_CHECKING:
     from entities.player import Player
 
 
-_BAR_W  = 120
-_BAR_H  = 10
+_BAR_W = 120
+_BAR_H = 10
 _MARGIN = 16
 
 
 class HUD:
     def __init__(self, assets: AssetLoader) -> None:
-        self._font_big  = assets.font(None, 28)
-        self._font_mid  = assets.font(None, 22)
-        self._font_small= assets.font(None, 18)
+        self._font_big = assets.font(None, 28)
+        self._font_mid = assets.font(None, 22)
+        self._font_small = assets.font(None, 18)
+        self._font_mute = assets.font(None, 20)
+
+        # Rect is updated every draw() call — used for click detection
+        self.mute_button_rect: pygame.Rect = pygame.Rect(0, 0, 0, 0)
 
     # ------------------------------------------------------------------
     def draw(
@@ -37,6 +44,7 @@ class HUD:
         time_left: float,
         night: int,
         player: Player,
+        muted: bool,
     ) -> None:
         w = DISPLAY.width
 
@@ -54,7 +62,9 @@ class HUD:
         hp_label = self._font_small.render("HP", True, (180, 80, 80))
         screen.blit(hp_label, (_MARGIN, _MARGIN))
         for i in range(player.hp):
-            pygame.draw.circle(screen, (220, 60, 60), (_MARGIN + 30 + i * 18, _MARGIN + 8), 7)
+            pygame.draw.circle(
+                screen, (220, 60, 60), (_MARGIN + 30 + i * 18, _MARGIN + 8), 7
+            )
 
         # Lantern fuel bar — below HP
         self._draw_bar(
@@ -81,6 +91,25 @@ class HUD:
                 hint_surf.get_rect(right=w - _MARGIN, bottom=DISPLAY.height - _MARGIN),
             )
 
+        # Mute button — top right
+        self._draw_mute_button(screen, muted)
+
+    # ------------------------------------------------------------------
+    def _draw_mute_button(self, screen: pygame.Surface, muted: bool) -> None:
+        label = "Shush!" if not muted else "Music!"
+        color = (160, 160, 140) if not muted else (120, 120, 100)
+        surf = self._font_mute.render(label, True, color)
+        rect = surf.get_rect(right=DISPLAY.width - _MARGIN, top=_MARGIN)
+
+        # Subtle background pill
+        pad = 6
+        bg_rect = rect.inflate(pad * 2, pad)
+        pygame.draw.rect(screen, (30, 30, 35), bg_rect, border_radius=6)
+        pygame.draw.rect(screen, (60, 60, 70), bg_rect, 1, border_radius=6)
+
+        screen.blit(surf, rect)
+        self.mute_button_rect = bg_rect
+
     # ------------------------------------------------------------------
     def _draw_bar(
         self,
@@ -90,8 +119,8 @@ class HUD:
         value: float,
         maximum: float,
         label: str,
-        color_full: tuple[int,int,int],
-        color_empty: tuple[int,int,int],
+        color_full: tuple[int, int, int],
+        color_empty: tuple[int, int, int],
     ) -> None:
         label_surf = self._font_small.render(label, True, (160, 160, 160))
         screen.blit(label_surf, (x, y))
@@ -111,7 +140,8 @@ class HUD:
         screen: pygame.Surface,
         inventory: dict[str, int],
     ) -> None:
-        x, y = _MARGIN, DISPLAY.height - _MARGIN - len(inventory) * 18
+        x = _MARGIN
+        y = DISPLAY.height - _MARGIN - len(inventory) * 18
         for item, qty in sorted(inventory.items()):
             surf = self._font_small.render(f"{item}: {qty}", True, (160, 160, 130))
             screen.blit(surf, (x, y))
