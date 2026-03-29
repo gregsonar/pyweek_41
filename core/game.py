@@ -4,6 +4,7 @@ singletons (asset loader, event bus, scene manager).
 
 Nothing outside this module should call ``pygame.init()``.
 """
+
 from __future__ import annotations
 
 import logging
@@ -11,10 +12,11 @@ import sys
 
 import pygame
 
-from core.asset_loader  import AssetLoader
-from core.event_bus     import EventBus
+from core.asset_loader import AssetLoader
+from core.audio_manager import AudioManager
+from core.event_bus import EventBus
 from core.scene_manager import SceneManager
-from settings           import DISPLAY
+from settings import DISPLAY
 
 log = logging.getLogger(__name__)
 
@@ -43,10 +45,11 @@ class Game:
         )
         pygame.display.set_caption(DISPLAY.title)
 
-        self.clock   = pygame.time.Clock()
-        self.assets  = AssetLoader()
-        self.bus     = EventBus()
-        self.scenes  = SceneManager()
+        self.clock = pygame.time.Clock()
+        self.assets = AssetLoader()
+        self.bus = EventBus()
+        self.scenes = SceneManager()
+        self.audio = AudioManager(self.bus)
 
         self.running = False
 

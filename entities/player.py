@@ -132,6 +132,7 @@ class Player:
 
     def take_damage(self, amount: int) -> None:
         self.hp -= amount
+        self._bus.publish(Events.PLAYER_DAMAGED, hp_remaining=self.hp)
         if self.hp <= 0:
             self._bus.publish(Events.PLAYER_DIED)
 

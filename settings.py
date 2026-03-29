@@ -140,3 +140,37 @@ MONSTER = MonsterConfig()
 WORLD = WorldConfig()
 RESOURCES = ResourceConfig()
 RECIPES = CraftRecipes()
+
+
+@dataclass(frozen=True)
+class AudioConfig:
+    music_volume: float = 0.1  # 0.0 – 1.0
+    sfx_volume: float = 0.2
+
+    # Music tracks (relative to assets/music/)
+    music_menu: str = "700639__xkeril__organic-background.wav"
+    music_day: str = "727920__ehved__forest-theme-orchestral-loop.mp3"
+    music_night: str = "667375__bloodpixelhero__retro-tense-loop2.wav"
+    music_gameover: str = "700639__xkeril__organic-background.wav"
+
+    # SFX (relative to assets/sounds/)
+    sfx_crate_open: str = "321082__benjaminnelan__wooden-hover.wav"
+    sfx_lantern_toggle: str = "840321__robo9418__wooden-short-click.wav"
+    sfx_monster_die: tuple[str, ...] = (
+        "398088__gamezger__quack.wav",
+        "353250__zuzek06__slimejump.wav",
+    )
+    sfx_player_hurt: str = "658431__deathbyfairydust__pop.wav"
+
+    # Night transition — one of three is picked at random each night
+    sfx_night_transition: tuple[str, ...] = (
+        "445719__lilmati__evil-presence-01.wav",
+        "445718__lilmati__evil-presence-02.wav",
+        "445717__lilmati__evil-presence-03.wav",
+    )
+
+    # Fade duration in milliseconds for music transitions
+    music_fade_ms: int = 1500
+
+
+AUDIO = AudioConfig()

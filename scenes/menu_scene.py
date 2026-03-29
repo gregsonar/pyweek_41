@@ -5,12 +5,15 @@ from __future__ import annotations
 import pygame
 
 from scenes.base_scene import BaseScene
+from settings import AUDIO
 
 
 class MenuScene(BaseScene):
     def on_enter(self) -> None:
         self._font_title = self.game.assets.font(None, 72)
         self._font_hint = self.game.assets.font(None, 32)
+        self.game.audio.play_music(AUDIO.music_menu)
+        self._logo = self.game.assets.image("sprites/knotty_kaa_pw41_logo.png")
 
     def handle_event(self, event: pygame.Event) -> None:
         if event.type == pygame.KEYDOWN:
