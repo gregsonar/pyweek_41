@@ -174,10 +174,10 @@ class LightSystem:
     def __init__(self, screen_size: tuple[int, int]) -> None:
         w, h = screen_size
         self._darkness = pygame.Surface((w, h), pygame.SRCALPHA)
-        # Single accumulated mask — all lit polygons drawn here first, then
-        # subtracted from darkness in ONE pass.  Avoids double-subtraction
-        # artifacts when two light polygons overlap.
         self._light_mask = pygame.Surface((w, h), pygame.SRCALPHA)
+        # Temporary surface for a single polygon — blitted into _light_mask
+        # with BLEND_RGBA_MAX so the brightest source always wins.
+        self._poly_surf = pygame.Surface((w, h), pygame.SRCALPHA)
         self._size = screen_size
 
     # ------------------------------------------------------------------
@@ -222,9 +222,16 @@ class LightSystem:
             vis_screen = [(p[0] - offset.x, p[1] - offset.y) for p in vis_world]
 
             alpha = int(min(darkness_alpha, 255) * max(0.0, min(1.0, intensity)))
-            pygame.draw.polygon(self._light_mask, (0, 0, 0, alpha), vis_screen)
+            self._poly_surf.fill((0, 0, 0, 0))
+            pygame.draw.polygon(self._poly_surf, (0, 0, 0, alpha), vis_screen)
+            # MAX-blend: brightest source wins in every overlapping pixel.
+            # A dim campfire can never darken an area lit by a bright lantern.
+            self._light_mask.blit(
+                self._poly_surf,
+                (0, 0),
+                special_flags=pygame.BLEND_RGBA_MAX,
+            )
 
-            # Soft glow drawn into the mask as well
             self._draw_glow(
                 ox - offset.x, oy - offset.y, radius, intensity, darkness_alpha
             )
