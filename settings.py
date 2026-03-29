@@ -150,7 +150,7 @@ class AudioConfig:
     # Music tracks (relative to assets/music/)
     music_menu: str = "700639__xkeril__organic-background.wav"
     music_day: str = "727920__ehved__forest-theme-orchestral-loop.mp3"
-    music_night: str = "667375__bloodpixelhero__retro-tense-loop2.wav"
+    music_night: str = "667375__bloodpixelhero__retro-tense-loop.wav"
     music_gameover: str = "700639__xkeril__organic-background.wav"
 
     # SFX (relative to assets/sounds/)
