@@ -93,8 +93,12 @@ class AISystem:
 
         dead: list[Monster] = []
         for monster in self.monsters:
+            prev_pos = pygame.Vector2(monster.pos)
             self._update_fsm(monster, dt, player, lights, world)
             self._apply_lantern_damage(monster, dt, lantern_sources)
+            # Pass movement delta so the sprite faces the right direction
+            delta = monster.pos - prev_pos
+            monster.update_animation(dt, delta.x, delta.y)
             if monster.hp <= 0:
                 dead.append(monster)
 
