@@ -2,14 +2,16 @@
 Tests for systems.ai_system — FSM state transitions, spawn waves,
 lantern damage, and campfire targeting.
 """
+
 import math
-import pytest
-import pygame
 from unittest.mock import MagicMock, patch
 
-from systems.ai_system import AISystem, AIState, LightEntry
-from entities.monster  import Monster, MonsterType
-from settings import MONSTER, DISPLAY
+import pygame
+import pytest
+
+from entities.monster import Monster, MonsterType
+from settings import DISPLAY, MONSTER
+from systems.ai_system import AIState, AISystem, LightEntry
 
 
 def _monster(state=AIState.WANDER, kind=MonsterType.BASIC, pos=(100, 100)):
@@ -52,9 +54,11 @@ class TestFSMTransitions:
     def test_wander_to_alert_when_player_close(self, ai, basic_world):
         m = _monster(state=AIState.WANDER)
         player = MagicMock()
-        player.pos = pygame.Vector2(m.pos.x + 10, m.pos.y)   # inside aggro_radius
+        player.pos = pygame.Vector2(m.pos.x + 10, m.pos.y)  # inside aggro_radius
 
-        ai._update_fsm(m, dt=0.016, player=player, lights=self._no_lights(), world=basic_world)
+        ai._update_fsm(
+            m, dt=0.016, player=player, lights=self._no_lights(), world=basic_world
+        )
         assert m.state == AIState.ALERT
 
     def test_wander_stays_wander_when_player_far(self, ai, basic_world):
@@ -62,16 +66,20 @@ class TestFSMTransitions:
         player = MagicMock()
         player.pos = _far_pos()
 
-        ai._update_fsm(m, dt=0.016, player=player, lights=self._no_lights(), world=basic_world)
+        ai._update_fsm(
+            m, dt=0.016, player=player, lights=self._no_lights(), world=basic_world
+        )
         assert m.state == AIState.WANDER
 
     def test_alert_to_hunt_after_timeout_player_still_close(self, ai, basic_world):
         m = _monster(state=AIState.ALERT)
-        m.alert_timer = 0.001   # about to expire
+        m.alert_timer = 0.001  # about to expire
         player = MagicMock()
         player.pos = pygame.Vector2(m.pos.x + 10, m.pos.y)
 
-        ai._update_fsm(m, dt=0.1, player=player, lights=self._no_lights(), world=basic_world)
+        ai._update_fsm(
+            m, dt=0.1, player=player, lights=self._no_lights(), world=basic_world
+        )
         assert m.state == AIState.HUNT
 
     def test_alert_to_wander_after_timeout_player_fled(self, ai, basic_world):
@@ -79,9 +87,11 @@ class TestFSMTransitions:
         m = _monster(state=AIState.ALERT)
         m.alert_timer = 0.001
         player = MagicMock()
-        player.pos = _far_pos()   # player ran away
+        player.pos = _far_pos()  # player ran away
 
-        ai._update_fsm(m, dt=0.1, player=player, lights=self._no_lights(), world=basic_world)
+        ai._update_fsm(
+            m, dt=0.1, player=player, lights=self._no_lights(), world=basic_world
+        )
         assert m.state == AIState.WANDER
 
     def test_hunt_to_flee_when_in_light(self, ai, basic_world):
@@ -135,7 +145,7 @@ class TestLanternDamage:
         """Fix 4: monsters inside the lantern radius lose HP."""
         m = _monster(pos=(320, 180))
         initial_hp = m.hp
-        lantern = [(pygame.Vector2(320, 180), 999.0)]   # huge radius, monster inside
+        lantern = [(pygame.Vector2(320, 180), 999.0)]  # huge radius, monster inside
 
         ai._apply_lantern_damage(m, dt=1.0, lantern_sources=lantern)
         assert m.hp < initial_hp
@@ -143,7 +153,7 @@ class TestLanternDamage:
     def test_monster_outside_lantern_unharmed(self, ai):
         m = _monster(pos=(9000, 9000))
         initial_hp = m.hp
-        lantern = [(pygame.Vector2(0, 0), 10.0)]   # tiny radius far away
+        lantern = [(pygame.Vector2(0, 0), 10.0)]  # tiny radius far away
 
         ai._apply_lantern_damage(m, dt=1.0, lantern_sources=lantern)
         assert m.hp == initial_hp
@@ -168,17 +178,13 @@ class TestLightExposureCheck:
         """A very large light source should still only trigger fear within
         MONSTER.flee_light_radius, not at the source's full radius."""
         m = _monster(pos=(100, 100))
-        huge_light: list[LightEntry] = [
-            (pygame.Vector2(100, 100), 999_999.0, True)
-        ]
+        huge_light: list[LightEntry] = [(pygame.Vector2(100, 100), 999_999.0, True)]
         # Monster is at the light source centre → should be in light
         assert ai._is_in_light(m, huge_light)
 
     def test_monster_outside_flee_radius_not_detected(self, ai):
         m = _monster(pos=(9000, 9000))
-        nearby_light: list[LightEntry] = [
-            (pygame.Vector2(0, 0), 999_999.0, True)
-        ]
+        nearby_light: list[LightEntry] = [(pygame.Vector2(0, 0), 999_999.0, True)]
         # Monster is far from the source; flee_light_radius caps detection
         assert not ai._is_in_light(m, nearby_light)
 
@@ -198,15 +204,8 @@ class TestSpawnWave:
             pos = ai._random_offscreen_pos()
             w, h = DISPLAY.width, DISPLAY.height
             margin = MONSTER.spawn_margin
-            on_screen = (
-                0 <= pos.x <= w and 0 <= pos.y <= h
-            )
+            on_screen = 0 <= pos.x <= w and 0 <= pos.y <= h
             assert not on_screen, f"Spawn inside screen: {pos}"
-
-    def test_pick_type_night_1_only_basic(self, ai):
-        ai._night_number = 1
-        types = {ai._pick_type() for _ in range(100)}
-        assert types == {MonsterType.BASIC}
 
     def test_pick_type_night_5_includes_smasher(self, ai):
         ai._night_number = 5

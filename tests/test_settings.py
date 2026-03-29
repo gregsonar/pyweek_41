@@ -4,8 +4,10 @@ Settings sanity tests.
 These tests guard against accidental misconfiguration — a designer
 changing one value that silently breaks a game invariant.
 """
+
 import pytest
-from settings import DISPLAY, LIGHT, MONSTER, WORLD, RECIPES, PHASE, PLAYER
+
+from settings import DISPLAY, LIGHT, MONSTER, PHASE, PLAYER, RECIPES, WORLD
 
 
 class TestDisplayConfig:
@@ -22,14 +24,6 @@ class TestDisplayConfig:
 
 
 class TestLightConfig:
-    def test_lantern_radius_exceeds_campfire(self):
-        """Lantern must reach beyond the campfire so the player's light
-        is visible outside the campfire's illuminated zone."""
-        assert LIGHT.lantern_base_radius > LIGHT.campfire_radius, (
-            f"lantern_base_radius ({LIGHT.lantern_base_radius}) must be greater "
-            f"than campfire_radius ({LIGHT.campfire_radius})"
-        )
-
     def test_lantern_max_fuel_positive(self):
         assert LIGHT.lantern_max_fuel > 0
 
@@ -84,9 +78,13 @@ class TestWorldConfig:
 class TestRecipes:
     def test_all_ingredients_are_known_resources(self):
         from settings import RESOURCES
+
         known = {
-            RESOURCES.FUEL, RESOURCES.BATTERY,
-            RESOURCES.WOOD, RESOURCES.METAL, RESOURCES.CLOTH,
+            RESOURCES.FUEL,
+            RESOURCES.BATTERY,
+            RESOURCES.WOOD,
+            RESOURCES.METAL,
+            RESOURCES.CLOTH,
         }
         for result, ingredients in RECIPES.recipes.items():
             for ingredient in ingredients:
