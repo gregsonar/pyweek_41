@@ -67,6 +67,10 @@ class AISystem:
         self._spawn_timer = 0.0
         self._wave_count = 0
 
+    def begin_day(self) -> None:
+        """Remove all monsters when transitioning to the day phase."""
+        self.monsters.clear()
+
     # ------------------------------------------------------------------
     def update(
         self,
@@ -272,7 +276,6 @@ class AISystem:
         probs = prob_table.get(
             min(self._night_number, max(prob_table.keys())), (0.50, 0.25, 0.25)
         )
-
         return random.choices(
             [MonsterType.BASIC, MonsterType.STALKER, MonsterType.SMASHER], probs
         )[0]
