@@ -33,8 +33,18 @@ class MenuScene(BaseScene):
             "Working Title: INTO THE DARK", True, (220, 200, 140)
         )
         hint = self._font_hint.render(
-            "Press ENTER or click to begin survival", True, (140, 140, 160)
+            "Press ENTER or click to begin survival\n\nControls: WASD/arrows to move, F to toggle flashlight (shiny!)\nand E to pickup useless items from crates (collect them all!)\n\nKeep an eye on the time — night is falling!",
+            True,
+            (140, 140, 160),
         )
 
         screen.blit(title, title.get_rect(center=(w // 2, h // 2 - 60)))
         screen.blit(hint, hint.get_rect(center=(w // 2, h // 2 + 40)))
+
+        # Team logo — bottom-left corner with a small margin
+        margin = 16
+        logo_rect = self._logo.get_rect(
+            left=margin,
+            bottom=h - margin,
+        )
+        screen.blit(self._logo, logo_rect)
