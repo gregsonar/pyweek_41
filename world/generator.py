@@ -19,7 +19,7 @@ import pygame
 
 from entities.light_source import LightSource, LightSourceKind
 from settings import DISPLAY, RESOURCES, WORLD
-from world.world import Container, Obstacle, Tile, World
+from world.world import Container, Decoration, Obstacle, Tile, World
 
 if TYPE_CHECKING:
     pass
@@ -194,7 +194,41 @@ def generate_day_map(night_number: int) -> World:
                     )
                 )
 
+    # Decorative bushes — scattered on free grass cells, no collision
+    _scatter_bushes(world, blocked)
+
     return world
+
+
+def _scatter_bushes(world: World, obstacle_blocked: set[tuple[int, int]]) -> None:
+    """
+    Place decorative bush tiles on free grass cells.
+
+    Bushes appear only where there are no obstacles or containers.
+    They have no collision and do not affect gameplay.
+    """
+    _BUSH_PROBABILITY = 0.05
+    gu = WORLD.grid_unit
+    w, h = DISPLAY.width, DISPLAY.height
+    margin = 32
+
+    container_cells = {(c.rect.x // gu, c.rect.y // gu) for c in world.containers}
+
+    for tx in range(margin, w - margin, gu):
+        for ty in range(margin, h - margin, gu):
+            gx, gy = tx // gu, ty // gu
+            if (gx, gy) in obstacle_blocked:
+                continue
+            if (gx, gy) in container_cells:
+                continue
+            if random.random() < _BUSH_PROBABILITY:
+                sx, sy = _snap(tx, gu), _snap(ty, gu)
+                world.decorations.append(
+                    Decoration(
+                        rect=pygame.Rect(sx, sy, gu, gu),
+                        sprite_name="bush",
+                    )
+                )
 
 
 def generate_night_map(night_number: int, inventory: dict[str, int]) -> World:
