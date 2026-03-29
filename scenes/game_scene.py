@@ -48,6 +48,10 @@ class GameScene(BaseScene):
     # Initialisation
     # ------------------------------------------------------------------
     def _init_game(self) -> None:
+        from core.sprite_renderer import SpriteRegistry
+
+        SpriteRegistry.init()
+
         self.night_number: int = 0
         self.phase: Phase = Phase.DAY
         self.phase_timer: float = 0.0
@@ -71,6 +75,8 @@ class GameScene(BaseScene):
         self.phase = Phase.DAY
         self.phase_timer = PHASE.day_duration
         self._input_locked = False
+
+        self._ai.begin_day()  # clear all monsters before generating new map
 
         self.world = generate_day_map(self.night_number)
         self.player = Player(
