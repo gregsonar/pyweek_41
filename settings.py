@@ -42,7 +42,7 @@ class LightConfig:
     darkness_alpha_night: int = 215
 
     # Player lantern defaults
-    lantern_base_radius: float = 260.0
+    lantern_base_radius: float = 130.0
     lantern_fuel_drain_per_sec: float = 8.0  # fuel units / sec
     lantern_max_fuel: float = 100.0
     lantern_recharge_enabled: bool = True

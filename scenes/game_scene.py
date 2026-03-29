@@ -58,6 +58,10 @@ class GameScene(BaseScene):
         self.transition_alpha: int = 0
         self._input_locked: bool = False
 
+        # Lantern flicker state — active when fuel < FLICKER_THRESHOLD
+        self._flicker_mult: float = 1.0  # current radius multiplier (0..1)
+        self._flicker_timer: float = 0.0  # countdown to next flicker event
+
         self._light = LightSystem(DISPLAY.size)
         self._ai = AISystem(self.game.bus)
         self._collision = CollisionSystem()
@@ -182,6 +186,7 @@ class GameScene(BaseScene):
     def _update_night(self, dt: float) -> None:
         self.world.update(dt)  # [Fix 6] drain campfire fuel, etc.
         self.player.update(dt, self.world, self._collision, is_night=True)
+        self._update_lantern_flicker(dt)
 
         lantern_sources = self._collect_lantern_sources()
         self._ai.update(dt, self.player, self.world, self._light, lantern_sources)
@@ -192,6 +197,39 @@ class GameScene(BaseScene):
             self._input_locked = True
             self.player.input_locked = True
             self.game.bus.publish(Events.PHASE_TRANSITION, to_phase="day")
+
+    _FLICKER_THRESHOLD = 0.30  # fuel fraction below which flicker activates
+    _FLICKER_INTERVAL = 0.08  # seconds between flicker state changes
+    _FLICKER_DIM = 0.25  # minimum radius fraction during a dim flash
+
+    def _update_lantern_flicker(self, dt: float) -> None:
+        """
+        When lantern fuel is below the threshold, randomly toggle between
+        full brightness and a dimmed state at irregular intervals.
+
+        Two parameters scale with desperation as fuel drops:
+          - interval shortens (flicker becomes more frequent)
+          - probability of dimming increases
+        """
+        import random
+
+        fuel_frac = self.player.lantern_fuel / LIGHT.lantern_max_fuel
+
+        if fuel_frac >= self._FLICKER_THRESHOLD or not self.player.lantern_on:
+            self._flicker_mult = 1.0
+            self._flicker_timer = 0.0
+            return
+
+        self._flicker_timer -= dt
+        if self._flicker_timer <= 0:
+            urgency = 1.0 - (fuel_frac / self._FLICKER_THRESHOLD)  # 0 → 1 as fuel drops
+            base = self._FLICKER_INTERVAL * (1.0 - urgency * 0.6)
+            self._flicker_timer = base + random.uniform(0.0, base)
+
+            if random.random() < 0.45 + urgency * 0.35:
+                self._flicker_mult = random.uniform(self._FLICKER_DIM, 0.70)
+            else:
+                self._flicker_mult = 1.0
 
     def _update_transition(self, dt: float, *, going_to_night: bool) -> None:
         progress = 1.0 - (self.phase_timer / PHASE.transition_duration)
@@ -212,7 +250,9 @@ class GameScene(BaseScene):
         """All light sources for the shadow renderer: (pos, radius, intensity)."""
         sources: list[tuple[pygame.Vector2, float, float]] = []
         if self.player.lantern_on and self.player.lantern_fuel > 0:
-            sources.append((self.player.pos, self.player.lantern_radius, 1.0))
+            sources.append(
+                (self.player.pos, self.player.lantern_radius, self._flicker_mult)
+            )
         for light in self.world.light_sources:
             if light.active:
                 sources.append((light.pos, light.radius, light.intensity))
